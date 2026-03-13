@@ -1,65 +1,134 @@
-import Image from "next/image";
+"use client";
+import React, { useState, useEffect, useRef } from 'react';
+import { Mail, Send, RefreshCw, Sparkles, MessageSquare, CheckCircle2, AlertCircle, Inbox } from 'lucide-react';
+import axios from 'axios';
 
-export default function Home() {
+const API_BASE_URL = "https://hafeezaqsa01-email-agent.hf.space/api";
+
+export default function EmailDashboard() {
+  const [emails, setEmails] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [statusMsg, setStatusMsg] = useState({ type: '', text: '' });
+  const isSyncing = useRef<boolean>(false);
+
+  const syncEmails = async (showLoad: boolean = false) => {
+    if (isSyncing.current) return;
+    if (showLoad) setLoading(true);
+    isSyncing.current = true;
+
+    try {
+      const res = await axios.get(`${API_BASE_URL}/process`);
+      if (res.data.status === "success") {
+        setEmails(res.data.data);
+      }
+    } catch (e) {
+      console.error("Sync failed");
+    } finally {
+      setLoading(false);
+      isSyncing.current = false;
+    }
+  };
+
+  const handleApproveAndSend = async (emailId: string) => {
+    try {
+      showStatus('loading', "Sending AI generated reply...");
+      const res = await axios.post(`${API_BASE_URL}/approve-and-send`, { email_id: emailId });
+
+      if (res.data.status === "success") {
+        showStatus('success', "Reply sent successfully!");
+        setEmails((prev) => prev.map(e => e.id === emailId ? { ...e, is_sent: true } : e));
+      }
+    } catch (error) {
+      showStatus('error', "Failed to send the message.");
+    }
+  };
+
+  const showStatus = (type: string, text: string) => {
+    setStatusMsg({ type, text });
+    if (type !== 'loading') setTimeout(() => setStatusMsg({ type: '', text: '' }), 4000);
+  };
+
+  useEffect(() => {
+    syncEmails(true);
+    // AUTO REFRESH: Every 10 seconds
+    const interval = setInterval(() => syncEmails(false), 10000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-900">
+      <div className="max-w-4xl mx-auto">
+        
+        <header className="flex justify-between items-center mb-8 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+          <div>
+            <h1 className="text-2xl font-black flex items-center gap-2">
+              <Sparkles className="text-blue-600 fill-blue-600" /> Smart Email Agent
+            </h1>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">
+              Automated Monitoring Active
+            </p>
+          </div>
+          <button onClick={() => syncEmails(true)} className="p-3 hover:bg-slate-50 rounded-2xl transition-all">
+            <RefreshCw size={20} className={loading ? "animate-spin text-blue-600" : "text-slate-400"} />
+          </button>
+        </header>
+
+        {statusMsg.text && (
+          <div className={`mb-6 p-4 rounded-2xl flex items-center gap-3 shadow-lg ${
+            statusMsg.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-slate-900 text-white'
+          }`}>
+            {statusMsg.type === 'loading' ? <RefreshCw size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+            <span className="text-sm font-bold">{statusMsg.text}</span>
+          </div>
+        )}
+
+        <div className="space-y-6">
+          {emails.length === 0 && !loading ? (
+            <div className="bg-white rounded-[2.5rem] p-24 text-center border-2 border-dashed border-slate-200">
+              <Inbox className="mx-auto text-slate-100 mb-4" size={64} />
+              <p className="text-slate-400 font-bold text-lg">Your inbox is clear.</p>
+            </div>
+          ) : (
+            emails.map((email) => (
+              <div key={email.id} className={`bg-white rounded-[2.5rem] p-8 border-2 transition-all duration-300 ${
+                email.is_sent ? 'border-green-50 opacity-60' : 'border-white shadow-xl shadow-slate-200/40'
+              }`}>
+                <div className="flex justify-between items-start mb-6">
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-black text-slate-800 tracking-tight">{email.subject}</h3>
+                    <p className="text-blue-500 font-bold text-sm">{email.sender}</p>
+                  </div>
+                  {email.is_sent && <span className="bg-green-100 text-green-700 px-4 py-1.5 rounded-full text-[10px] font-black uppercase">Delivered</span>}
+                </div>
+
+                <div className="bg-slate-50 rounded-2xl p-5 mb-6 border border-slate-100 text-sm text-slate-500 italic">
+                  "{email.snippet}"
+                </div>
+
+                {!email.is_sent && email.ai_draft && (
+                  <div className="bg-blue-50/40 rounded-3xl p-6 border border-blue-100 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-blue-600 text-[10px] font-black uppercase tracking-widest">
+                      <MessageSquare size={16} /> AI Suggested Response
+                    </div>
+                    <p className="text-sm text-slate-700 font-medium whitespace-pre-line">{email.ai_draft}</p>
+                  </div>
+                )}
+
+                {!email.is_sent && (
+                  <div className="flex justify-end">
+                    <button 
+                      onClick={() => handleApproveAndSend(email.id)} 
+                      className="bg-slate-900 hover:bg-black text-white px-10 py-4 rounded-2xl font-black text-sm flex items-center gap-2 shadow-lg transition-all active:scale-95"
+                    >
+                      <Send size={18} /> Approve & Send
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }
